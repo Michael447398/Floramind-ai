@@ -1,0 +1,280 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated user profile, preferences, daily AI quota tracking, and schema version.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Firebase Auth UID matching document ID." },
+        "displayName": { "type": "string", "description": "User full or display name." },
+        "email": { "type": "string", "description": "User email address." },
+        "photoUrl": { "type": "string", "description": "Optional profile avatar URL." },
+        "region": { "type": "string", "description": "User country or climate region for localized care advice." },
+        "darkMode": { "type": "boolean", "description": "Whether dark mode theme is enabled." },
+        "retainThumbnails": { "type": "boolean", "description": "Whether compressed scan thumbnails are synced to Firestore." },
+        "advancedBotanyMode": { "type": "boolean", "description": "Default beginner vs advanced scientific depth for Ask FloraMind." },
+        "dailyScanCount": { "type": "integer", "description": "Number of AI scans used on dailyScanDate." },
+        "dailyScanDate": { "type": "string", "description": "UTC date string (YYYY-MM-DD) for quota reset." },
+        "totalScans": { "type": "integer", "description": "Lifetime scan count." },
+        "schemaVersion": { "type": "integer", "description": "Backward-compatible schema version number." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp on creation (FieldValue.serverTimestamp())." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp on update (FieldValue.serverTimestamp())." }
+      },
+      "required": ["userId", "displayName", "email", "schemaVersion", "createdAt", "updatedAt"]
+    },
+    "PlantScan": {
+      "title": "PlantScan",
+      "description": "User-scoped plant identification scan record, morphological confidence, optional thumbnail, and 11-section botanical report.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Owner Firebase Auth UID." },
+        "commonName": { "type": "string", "description": "Primary common name or uncertainty label." },
+        "scientificName": { "type": "string", "description": "Latin binomial name when identifiable." },
+        "family": { "type": "string", "description": "Botanical family name." },
+        "confidenceTier": { "type": "string", "enum": ["HIGH", "MODERATE", "UNCERTAIN", "NON_PLANT"] },
+        "confidenceNote": { "type": "string", "description": "Explanation of confidence or missing photographic clues." },
+        "summary": { "type": "string", "description": "Concise morphological identification summary." },
+        "safetyLevel": { "type": "string", "enum": ["SAFE", "CAUTION", "TOXIC", "UNKNOWN"] },
+        "safetyHeadline": { "type": "string", "description": "Top-level safety warning visible without scrolling." },
+        "regionContext": { "type": "string", "description": "Optional user-supplied country or region." },
+        "habitatContext": { "type": "string", "description": "Optional user-supplied habitat or observation notes." },
+        "thumbnailBase64": { "type": "string", "description": "Optional compressed JPEG thumbnail <= 150 KB." },
+        "evidenceQuality": { "type": "string", "enum": ["STRONG", "MODERATE", "LIMITED", "INSUFFICIENT"] },
+        "reportData": { "type": "object", "description": "Structured Sections A-K and Deep Research verification sources." },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "commonName", "scientificName", "confidenceTier", "summary", "safetyLevel", "reportData", "createdAt", "updatedAt"]
+    },
+    "SavedPlant": {
+      "title": "SavedPlant",
+      "description": "User's saved botanical specimen with folder, tags, personal notes, and full report snapshot.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "scanId": { "type": "string" },
+        "commonName": { "type": "string" },
+        "scientificName": { "type": "string" },
+        "family": { "type": "string" },
+        "folderId": { "type": "string" },
+        "folderName": { "type": "string" },
+        "tags": { "type": "array" },
+        "notes": { "type": "string" },
+        "safetyLevel": { "type": "string", "enum": ["SAFE", "CAUTION", "TOXIC", "UNKNOWN"] },
+        "thumbnailBase64": { "type": "string" },
+        "reportData": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "commonName", "scientificName", "safetyLevel", "reportData", "createdAt", "updatedAt"]
+    },
+    "PlantFolder": {
+      "title": "PlantFolder",
+      "description": "Custom collection folder for organizing saved plants.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "colorHex": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "name", "createdAt", "updatedAt"]
+    },
+    "CuratedPlant": {
+      "title": "CuratedPlant",
+      "description": "Owner-managed botanical encyclopedia record with draft/published/archived lifecycle and revision counter.",
+      "type": "object",
+      "properties": {
+        "authorId": { "type": "string" },
+        "commonName": { "type": "string" },
+        "scientificName": { "type": "string" },
+        "family": { "type": "string" },
+        "category": { "type": "string" },
+        "region": { "type": "string" },
+        "safetyLevel": { "type": "string", "enum": ["SAFE", "CAUTION", "TOXIC", "UNKNOWN"] },
+        "summary": { "type": "string" },
+        "safetyNotice": { "type": "string" },
+        "habitat": { "type": "string" },
+        "uses": { "type": "string" },
+        "medicinalEvidence": { "type": "string" },
+        "careGuide": { "type": "string" },
+        "sources": { "type": "array" },
+        "featured": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["draft", "published", "archived"] },
+        "revisionNumber": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["authorId", "commonName", "scientificName", "family", "category", "region", "safetyLevel", "summary", "featured", "status", "revisionNumber", "createdAt", "updatedAt"]
+    },
+    "CuratedPlantRevision": {
+      "title": "CuratedPlantRevision",
+      "description": "Immutable revision snapshot for owner-managed botanical CMS entries.",
+      "type": "object",
+      "properties": {
+        "editorId": { "type": "string" },
+        "revisionNumber": { "type": "integer" },
+        "changeSummary": { "type": "string" },
+        "snapshot": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["editorId", "revisionNumber", "changeSummary", "snapshot", "createdAt"]
+    },
+    "AppConfig": {
+      "title": "AppConfig",
+      "description": "Owner-controlled global application configuration, maintenance mode, AI daily scan quota, featured daily discovery, and release info.",
+      "type": "object",
+      "properties": {
+        "updatedBy": { "type": "string" },
+        "maintenanceMode": { "type": "boolean" },
+        "maintenanceMessage": { "type": "string" },
+        "dailyScanLimit": { "type": "integer" },
+        "featuredPlantSlug": { "type": "string" },
+        "featuredPlantTitle": { "type": "string" },
+        "featuredPlantFact": { "type": "string" },
+        "currentAppVersion": { "type": "string" },
+        "releaseNotes": { "type": "string" },
+        "schemaVersion": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["updatedBy", "maintenanceMode", "dailyScanLimit", "currentAppVersion", "releaseNotes", "schemaVersion", "createdAt", "updatedAt"]
+    },
+    "Announcement": {
+      "title": "Announcement",
+      "description": "Owner-published announcements, safety alerts, and changelog notes.",
+      "type": "object",
+      "properties": {
+        "authorId": { "type": "string" },
+        "title": { "type": "string" },
+        "body": { "type": "string" },
+        "type": { "type": "string", "enum": ["announcement", "changelog", "safety_alert"] },
+        "versionTag": { "type": "string" },
+        "published": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["authorId", "title", "body", "type", "published", "createdAt", "updatedAt"]
+    },
+    "FeedbackReport": {
+      "title": "FeedbackReport",
+      "description": "User-submitted identification correction, safety concern, or bug report.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "plantName": { "type": "string" },
+        "category": { "type": "string", "enum": ["misidentification", "safety_concern", "bug", "feature_request"] },
+        "message": { "type": "string" },
+        "status": { "type": "string", "enum": ["open", "reviewed", "resolved"] },
+        "adminNotes": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "category", "message", "status", "createdAt", "updatedAt"]
+    },
+    "UsageLog": {
+      "title": "UsageLog",
+      "description": "Append-only AI and research telemetry log for admin cost and error monitoring.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "action": { "type": "string", "enum": ["identify_success", "identify_error", "ask_floramind", "deep_research"] },
+        "modelName": { "type": "string" },
+        "status": { "type": "string", "enum": ["success", "error", "quota_blocked"] },
+        "errorSummary": { "type": "string" },
+        "latencyMs": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "action", "modelName", "status", "latencyMs", "createdAt"]
+    },
+    "UserEntitlement": {
+      "title": "UserEntitlement",
+      "description": "Server-controlled freemium plan, free identification counter (max 10), subscription status, expiry, and verified purchase attribution.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "planType": { "type": "string", "enum": ["FREE", "PREMIUM_MONTHLY", "PREMIUM_ANNUAL", "LIFETIME_PREMIUM"] },
+        "freeIdentificationsUsed": { "type": "integer" },
+        "freeIdentificationsLimit": { "type": "integer" },
+        "subscriptionStatus": { "type": "string", "enum": ["FREE", "ACTIVE", "CANCELLED", "EXPIRED", "PAST_DUE", "REFUNDED", "REVOKED"] },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "purchaseProvider": { "type": "string", "enum": ["NONE", "GOOGLE_PLAY", "PAYSTACK"] },
+        "purchaseReference": { "type": "string" },
+        "productId": { "type": "string" },
+        "willAutoRenew": { "type": "boolean" },
+        "hasLifetimeEntitlement": { "type": "boolean" },
+        "lastScanRequestId": { "type": "string" },
+        "schemaVersion": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "planType", "freeIdentificationsUsed", "freeIdentificationsLimit", "subscriptionStatus", "purchaseProvider", "purchaseReference", "willAutoRenew", "hasLifetimeEntitlement", "schemaVersion", "createdAt", "updatedAt"]
+    },
+    "PurchaseLedger": {
+      "title": "PurchaseLedger",
+      "description": "Server-only idempotent purchase token/reference lock preventing cross-account purchase reuse.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "provider": { "type": "string", "enum": ["GOOGLE_PLAY", "PAYSTACK"] },
+        "productId": { "type": "string" },
+        "planType": { "type": "string" },
+        "purchaseReference": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "provider", "productId", "planType", "purchaseReference", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "UserProfile" },
+      "description": "User profile and daily quota document isolated by UID."
+    },
+    "/users/{userId}/scans/{scanId}": {
+      "schema": { "$ref": "PlantScan" },
+      "description": "User's private plant identification scan history and full reports."
+    },
+    "/users/{userId}/saved_plants/{plantId}": {
+      "schema": { "$ref": "SavedPlant" },
+      "description": "User's personal saved plant collection with folders, tags, and notes."
+    },
+    "/users/{userId}/folders/{folderId}": {
+      "schema": { "$ref": "PlantFolder" },
+      "description": "User's custom collection folders."
+    },
+    "/curated_plants/{plantSlug}": {
+      "schema": { "$ref": "CuratedPlant" },
+      "description": "Owner-managed botanical entries readable when published."
+    },
+    "/curated_plants/{plantSlug}/revisions/{revId}": {
+      "schema": { "$ref": "CuratedPlantRevision" },
+      "description": "Immutable CMS revision snapshots accessible only to administrators."
+    },
+    "/app_config/{configId}": {
+      "schema": { "$ref": "AppConfig" },
+      "description": "Global application settings, maintenance state, quota limits, and release notes."
+    },
+    "/announcements/{announcementId}": {
+      "schema": { "$ref": "Announcement" },
+      "description": "Publicly readable announcements and changelog items managed by owner."
+    },
+    "/feedback_reports/{reportId}": {
+      "schema": { "$ref": "FeedbackReport" },
+      "description": "User feedback and misidentification reports triaged by owner."
+    },
+    "/usage_logs/{logId}": {
+      "schema": { "$ref": "UsageLog" },
+      "description": "AI usage and error monitoring logs readable only by owner."
+    },
+    "/entitlements/{userId}": {
+      "schema": { "$ref": "UserEntitlement" },
+      "description": "Server-controlled entitlement & 10-use free allowance per Firebase UID."
+    },
+    "/purchase_ledger/{purchaseKey}": {
+      "schema": { "$ref": "PurchaseLedger" },
+      "description": "Server-only idempotency ledger binding purchase references to single user IDs."
+    }
+  }
+}

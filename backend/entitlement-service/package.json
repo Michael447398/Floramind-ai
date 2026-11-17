@@ -1,0 +1,21 @@
+{
+  "name": "floramind-entitlement-service",
+  "version": "1.0.0",
+  "description": "Shared Firebase Auth + Cloud Firestore entitlement, Paystack web billing, and Google Play Developer API verification service for FloraMind AI.",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "firebase-admin": "^13.2.0",
+    "googleapis": "^146.0.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.3"
+  }
+}

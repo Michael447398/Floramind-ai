@@ -1,0 +1,6 @@
+{
+  "name": "FloraMind AI",
+  "description": "Discover the Science of Every Plant. Multimodal Gemini botanical identification, live scientific database verification, personal collections, and owner CMS.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

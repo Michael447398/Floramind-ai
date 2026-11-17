@@ -1,0 +1,485 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global safety net: default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Primitive Helpers ---
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwnerAccount() {
+      return isSignedIn() &&
+             request.auth.token.email == 'michaeligwe430@gmail.com' &&
+             request.auth.token.email_verified == true;
+    }
+
+    // Cost-safe admin check for single-document operations (supports verified owner account
+    // or explicitly server/owner-provisioned admin doc). For list queries, use isOwnerAccount()
+    // to avoid exists() lookups inside allow list.
+    function isAdmin() {
+      return isOwnerAccount() ||
+             (isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
+    }
+
+    function isValidTimestamp(ts) {
+      return ts is timestamp && ts <= request.time;
+    }
+
+    // --- Validation Helpers ---
+    function isValidUserProfile(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100 &&
+             data.email is string && data.email.size() <= 160 &&
+             data.schemaVersion is int && data.schemaVersion >= 1 && data.schemaVersion <= 100 &&
+             (!('photoUrl' in data) || data.photoUrl == null || (data.photoUrl is string && data.photoUrl.size() <= 500)) &&
+             (!('region' in data) || data.region == null || (data.region is string && data.region.size() <= 100)) &&
+             (!('darkMode' in data) || data.darkMode is bool) &&
+             (!('retainThumbnails' in data) || data.retainThumbnails is bool) &&
+             (!('advancedBotanyMode' in data) || data.advancedBotanyMode is bool) &&
+             (!('dailyScanCount' in data) || (data.dailyScanCount is int && data.dailyScanCount >= 0 && data.dailyScanCount <= 1000)) &&
+             (!('dailyScanDate' in data) || data.dailyScanDate == null || (data.dailyScanDate is string && data.dailyScanDate.size() <= 20)) &&
+             (!('totalScans' in data) || (data.totalScans is int && data.totalScans >= 0 && data.totalScans <= 1000000));
+    }
+
+    function isValidPlantScan(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.commonName is string && data.commonName.size() >= 1 && data.commonName.size() <= 150 &&
+             data.scientificName is string && data.scientificName.size() <= 180 &&
+             data.confidenceTier in ['HIGH', 'MODERATE', 'UNCERTAIN', 'NON_PLANT'] &&
+             data.summary is string && data.summary.size() >= 1 && data.summary.size() <= 2000 &&
+             data.safetyLevel in ['SAFE', 'CAUTION', 'TOXIC', 'UNKNOWN'] &&
+             data.reportData is map && data.reportData.keys().size() <= 40 &&
+             (!('family' in data) || data.family == null || (data.family is string && data.family.size() <= 120)) &&
+             (!('confidenceNote' in data) || data.confidenceNote == null || (data.confidenceNote is string && data.confidenceNote.size() <= 600)) &&
+             (!('safetyHeadline' in data) || data.safetyHeadline == null || (data.safetyHeadline is string && data.safetyHeadline.size() <= 600)) &&
+             (!('regionContext' in data) || data.regionContext == null || (data.regionContext is string && data.regionContext.size() <= 200)) &&
+             (!('habitatContext' in data) || data.habitatContext == null || (data.habitatContext is string && data.habitatContext.size() <= 300)) &&
+             (!('thumbnailBase64' in data) || data.thumbnailBase64 == null || (data.thumbnailBase64 is string && data.thumbnailBase64.size() <= 240000)) &&
+             (!('evidenceQuality' in data) || data.evidenceQuality == null || data.evidenceQuality in ['STRONG', 'MODERATE', 'LIMITED', 'INSUFFICIENT']);
+    }
+
+    function isValidSavedPlant(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.commonName is string && data.commonName.size() >= 1 && data.commonName.size() <= 150 &&
+             data.scientificName is string && data.scientificName.size() >= 1 && data.scientificName.size() <= 180 &&
+             data.safetyLevel in ['SAFE', 'CAUTION', 'TOXIC', 'UNKNOWN'] &&
+             data.reportData is map && data.reportData.keys().size() <= 40 &&
+             (!('scanId' in data) || data.scanId == null || (data.scanId is string && data.scanId.size() <= 128)) &&
+             (!('family' in data) || data.family == null || (data.family is string && data.family.size() <= 120)) &&
+             (!('folderId' in data) || data.folderId == null || (data.folderId is string && data.folderId.size() <= 128)) &&
+             (!('folderName' in data) || data.folderName == null || (data.folderName is string && data.folderName.size() <= 80)) &&
+             (!('tags' in data) || (data.tags is list && data.tags.size() <= 12 && (data.tags.size() == 0 || data.tags[0] is string))) &&
+             (!('notes' in data) || data.notes == null || (data.notes is string && data.notes.size() <= 4000)) &&
+             (!('thumbnailBase64' in data) || data.thumbnailBase64 == null || (data.thumbnailBase64 is string && data.thumbnailBase64.size() <= 240000));
+    }
+
+    function isValidPlantFolder(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 60 &&
+             (!('colorHex' in data) || data.colorHex == null || (data.colorHex is string && data.colorHex.size() <= 16));
+    }
+
+    function isValidCuratedPlant(data) {
+      return data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
+             data.commonName is string && data.commonName.size() >= 1 && data.commonName.size() <= 150 &&
+             data.scientificName is string && data.scientificName.size() >= 1 && data.scientificName.size() <= 180 &&
+             data.family is string && data.family.size() >= 1 && data.family.size() <= 120 &&
+             data.category is string && data.category.size() >= 1 && data.category.size() <= 80 &&
+             data.region is string && data.region.size() >= 1 && data.region.size() <= 120 &&
+             data.safetyLevel in ['SAFE', 'CAUTION', 'TOXIC', 'UNKNOWN'] &&
+             data.summary is string && data.summary.size() >= 1 && data.summary.size() <= 2000 &&
+             data.featured is bool &&
+             data.status in ['draft', 'published', 'archived'] &&
+             data.revisionNumber is int && data.revisionNumber >= 1 && data.revisionNumber <= 10000 &&
+             (!('safetyNotice' in data) || data.safetyNotice == null || (data.safetyNotice is string && data.safetyNotice.size() <= 1000)) &&
+             (!('habitat' in data) || data.habitat == null || (data.habitat is string && data.habitat.size() <= 600)) &&
+             (!('uses' in data) || data.uses == null || (data.uses is string && data.uses.size() <= 1200)) &&
+             (!('medicinalEvidence' in data) || data.medicinalEvidence == null || (data.medicinalEvidence is string && data.medicinalEvidence.size() <= 1200)) &&
+             (!('careGuide' in data) || data.careGuide == null || (data.careGuide is string && data.careGuide.size() <= 1200)) &&
+             (!('sources' in data) || (data.sources is list && data.sources.size() <= 10 && (data.sources.size() == 0 || data.sources[0] is string)));
+    }
+
+    function isValidCuratedPlantRevision(data) {
+      return data.editorId is string && data.editorId.size() >= 1 && data.editorId.size() <= 128 &&
+             data.revisionNumber is int && data.revisionNumber >= 1 &&
+             data.changeSummary is string && data.changeSummary.size() >= 1 && data.changeSummary.size() <= 500 &&
+             data.snapshot is map && data.snapshot.keys().size() <= 40;
+    }
+
+    function isValidAppConfig(data) {
+      return data.updatedBy is string && data.updatedBy.size() >= 1 && data.updatedBy.size() <= 128 &&
+             data.maintenanceMode is bool &&
+             data.dailyScanLimit is int && data.dailyScanLimit >= 1 && data.dailyScanLimit <= 500 &&
+             data.currentAppVersion is string && data.currentAppVersion.size() >= 1 && data.currentAppVersion.size() <= 32 &&
+             data.releaseNotes is string && data.releaseNotes.size() <= 2000 &&
+             data.schemaVersion is int && data.schemaVersion >= 1 && data.schemaVersion <= 100 &&
+             (!('maintenanceMessage' in data) || data.maintenanceMessage == null || (data.maintenanceMessage is string && data.maintenanceMessage.size() <= 400)) &&
+             (!('featuredPlantSlug' in data) || data.featuredPlantSlug == null || (data.featuredPlantSlug is string && data.featuredPlantSlug.size() <= 128)) &&
+             (!('featuredPlantTitle' in data) || data.featuredPlantTitle == null || (data.featuredPlantTitle is string && data.featuredPlantTitle.size() <= 160)) &&
+             (!('featuredPlantFact' in data) || data.featuredPlantFact == null || (data.featuredPlantFact is string && data.featuredPlantFact.size() <= 600));
+    }
+
+    function isValidAnnouncement(data) {
+      return data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 160 &&
+             data.body is string && data.body.size() >= 1 && data.body.size() <= 2000 &&
+             data.type in ['announcement', 'changelog', 'safety_alert'] &&
+             data.published is bool &&
+             (!('versionTag' in data) || data.versionTag == null || (data.versionTag is string && data.versionTag.size() <= 32));
+    }
+
+    function isValidFeedbackReport(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.category in ['misidentification', 'safety_concern', 'bug', 'feature_request'] &&
+             data.message is string && data.message.size() >= 5 && data.message.size() <= 2000 &&
+             data.status in ['open', 'reviewed', 'resolved'] &&
+             (!('userEmail' in data) || data.userEmail == null || (data.userEmail is string && data.userEmail.size() <= 160)) &&
+             (!('plantName' in data) || data.plantName == null || (data.plantName is string && data.plantName.size() <= 150)) &&
+             (!('adminNotes' in data) || data.adminNotes == null || (data.adminNotes is string && data.adminNotes.size() <= 1000));
+    }
+
+    function isValidUsageLog(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.action in ['identify_success', 'identify_error', 'ask_floramind', 'deep_research'] &&
+             data.modelName is string && data.modelName.size() >= 1 && data.modelName.size() <= 64 &&
+             data.status in ['success', 'error', 'quota_blocked'] &&
+             data.latencyMs is int && data.latencyMs >= 0 && data.latencyMs <= 300000 &&
+             (!('errorSummary' in data) || data.errorSummary == null || (data.errorSummary is string && data.errorSummary.size() <= 300));
+    }
+
+    function isValidUserEntitlement(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.planType in ['FREE', 'PREMIUM_MONTHLY', 'PREMIUM_ANNUAL', 'LIFETIME_PREMIUM'] &&
+             data.freeIdentificationsUsed is int && data.freeIdentificationsUsed >= 0 && data.freeIdentificationsUsed <= 10 &&
+             data.freeIdentificationsLimit is int && data.freeIdentificationsLimit == 10 &&
+             data.subscriptionStatus in ['FREE', 'ACTIVE', 'CANCELLED', 'EXPIRED', 'PAST_DUE', 'REFUNDED', 'REVOKED'] &&
+             (!('expiresAt' in data) || data.expiresAt == null || data.expiresAt is timestamp) &&
+             data.purchaseProvider in ['NONE', 'GOOGLE_PLAY', 'PAYSTACK'] &&
+             data.purchaseReference is string && data.purchaseReference.size() <= 200 &&
+             (!('productId' in data) || data.productId == null || (data.productId is string && data.productId.size() <= 120)) &&
+             data.willAutoRenew is bool &&
+             data.hasLifetimeEntitlement is bool &&
+             (!('lastScanRequestId' in data) || data.lastScanRequestId == null || (data.lastScanRequestId is string && data.lastScanRequestId.size() <= 128)) &&
+             data.schemaVersion is int && data.schemaVersion >= 1 && data.schemaVersion <= 100;
+    }
+
+    // --- Collection Rules ---
+
+    // Delegated admin registry (only verified owner account can manage)
+    match /admins/{uid} {
+      allow get: if isValidId(uid) && (isOwnerAccount() || (isSignedIn() && request.auth.uid == uid));
+      allow list, create, update, delete: if isOwnerAccount();
+    }
+
+    // Private User Profile + User Subcollections
+    match /users/{userId} {
+      allow get: if isValidId(userId) && ((isSignedIn() && request.auth.uid == userId) || isAdmin());
+      allow list: if isOwnerAccount();
+
+      allow create: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll(['userId', 'displayName', 'email', 'schemaVersion', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'displayName', 'email', 'photoUrl', 'region', 'darkMode', 'retainThumbnails', 'advancedBotanyMode', 'dailyScanCount', 'dailyScanDate', 'totalScans', 'schemaVersion', 'createdAt', 'updatedAt']) &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       isValidTimestamp(incoming().updatedAt) &&
+                       isValidUserProfile(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidTimestamp(incoming().updatedAt) &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'email', 'photoUrl', 'region', 'darkMode', 'retainThumbnails', 'advancedBotanyMode', 'dailyScanCount', 'dailyScanDate', 'totalScans', 'schemaVersion', 'updatedAt']);
+
+      allow delete: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+
+      // User Scans
+      match /scans/{scanId} {
+        allow get: if isValidId(scanId) && isSignedIn() && request.auth.uid == userId;
+        allow list: if isSignedIn() && request.auth.uid == userId;
+
+        allow create: if isSignedIn() &&
+                         isValidId(scanId) &&
+                         request.auth.uid == userId &&
+                         incoming().userId == request.auth.uid &&
+                         incoming().keys().hasAll(['userId', 'commonName', 'scientificName', 'confidenceTier', 'summary', 'safetyLevel', 'reportData', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'commonName', 'scientificName', 'family', 'confidenceTier', 'confidenceNote', 'summary', 'safetyLevel', 'safetyHeadline', 'regionContext', 'habitatContext', 'thumbnailBase64', 'evidenceQuality', 'reportData', 'createdAt', 'updatedAt']) &&
+                         isValidTimestamp(incoming().createdAt) &&
+                         isValidTimestamp(incoming().updatedAt) &&
+                         isValidPlantScan(incoming());
+
+        allow update: if isSignedIn() &&
+                         isValidId(scanId) &&
+                         request.auth.uid == userId &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         isValidTimestamp(incoming().updatedAt) &&
+                         isValidPlantScan(incoming()) &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['thumbnailBase64', 'regionContext', 'habitatContext', 'reportData', 'updatedAt']);
+
+        allow delete: if isSignedIn() && isValidId(scanId) && request.auth.uid == userId;
+      }
+
+      // User Saved Plants
+      match /saved_plants/{plantId} {
+        allow get: if isValidId(plantId) && isSignedIn() && request.auth.uid == userId;
+        allow list: if isSignedIn() && request.auth.uid == userId;
+
+        allow create: if isSignedIn() &&
+                         isValidId(plantId) &&
+                         request.auth.uid == userId &&
+                         incoming().userId == request.auth.uid &&
+                         incoming().keys().hasAll(['userId', 'commonName', 'scientificName', 'safetyLevel', 'reportData', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'scanId', 'commonName', 'scientificName', 'family', 'folderId', 'folderName', 'tags', 'notes', 'safetyLevel', 'thumbnailBase64', 'reportData', 'createdAt', 'updatedAt']) &&
+                         isValidTimestamp(incoming().createdAt) &&
+                         isValidTimestamp(incoming().updatedAt) &&
+                         isValidSavedPlant(incoming());
+
+        allow update: if isSignedIn() &&
+                         isValidId(plantId) &&
+                         request.auth.uid == userId &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         isValidTimestamp(incoming().updatedAt) &&
+                         isValidSavedPlant(incoming()) &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['folderId', 'folderName', 'tags', 'notes', 'thumbnailBase64', 'reportData', 'updatedAt']);
+
+        allow delete: if isSignedIn() && isValidId(plantId) && request.auth.uid == userId;
+      }
+
+      // User Folders
+      match /folders/{folderId} {
+        allow get: if isValidId(folderId) && isSignedIn() && request.auth.uid == userId;
+        allow list: if isSignedIn() && request.auth.uid == userId;
+
+        allow create: if isSignedIn() &&
+                         isValidId(folderId) &&
+                         request.auth.uid == userId &&
+                         incoming().userId == request.auth.uid &&
+                         incoming().keys().hasAll(['userId', 'name', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'name', 'colorHex', 'createdAt', 'updatedAt']) &&
+                         isValidTimestamp(incoming().createdAt) &&
+                         isValidTimestamp(incoming().updatedAt) &&
+                         isValidPlantFolder(incoming());
+
+        allow update: if isSignedIn() &&
+                         isValidId(folderId) &&
+                         request.auth.uid == userId &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         isValidTimestamp(incoming().updatedAt) &&
+                         isValidPlantFolder(incoming()) &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['name', 'colorHex', 'updatedAt']);
+
+        allow delete: if isSignedIn() && isValidId(folderId) && request.auth.uid == userId;
+      }
+    }
+
+    // Owner-Curated Botanical CMS
+    match /curated_plants/{plantSlug} {
+      allow get: if isValidId(plantSlug) && (isAdmin() || (resource != null && existing().status == 'published'));
+      allow list: if isOwnerAccount() || (resource != null && existing().status == 'published');
+
+      allow create: if isAdmin() &&
+                       isValidId(plantSlug) &&
+                       incoming().authorId == request.auth.uid &&
+                       incoming().keys().hasAll(['authorId', 'commonName', 'scientificName', 'family', 'category', 'region', 'safetyLevel', 'summary', 'featured', 'status', 'revisionNumber', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['authorId', 'commonName', 'scientificName', 'family', 'category', 'region', 'safetyLevel', 'summary', 'safetyNotice', 'habitat', 'uses', 'medicinalEvidence', 'careGuide', 'sources', 'featured', 'status', 'revisionNumber', 'createdAt', 'updatedAt']) &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       isValidTimestamp(incoming().updatedAt) &&
+                       isValidCuratedPlant(incoming());
+
+      allow update: if isAdmin() &&
+                       isValidId(plantSlug) &&
+                       incoming().authorId == existing().authorId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidTimestamp(incoming().updatedAt) &&
+                       isValidCuratedPlant(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['commonName', 'scientificName', 'family', 'category', 'region', 'safetyLevel', 'summary', 'safetyNotice', 'habitat', 'uses', 'medicinalEvidence', 'careGuide', 'sources', 'featured', 'status', 'revisionNumber', 'updatedAt']);
+
+      allow delete: if isAdmin() && isValidId(plantSlug);
+
+      match /revisions/{revId} {
+        allow get: if isValidId(revId) && isAdmin();
+        allow list: if isOwnerAccount();
+        allow create: if isAdmin() &&
+                         isValidId(revId) &&
+                         incoming().editorId == request.auth.uid &&
+                         incoming().keys().hasAll(['editorId', 'revisionNumber', 'changeSummary', 'snapshot', 'createdAt']) &&
+                         incoming().keys().hasOnly(['editorId', 'revisionNumber', 'changeSummary', 'snapshot', 'createdAt']) &&
+                         isValidTimestamp(incoming().createdAt) &&
+                         isValidCuratedPlantRevision(incoming());
+        allow update, delete: if false;
+      }
+    }
+
+    // Global App Configuration (Maintenance Mode, Quotas, Daily Discovery, Version)
+    match /app_config/{configId} {
+      allow get: if isValidId(configId);
+      allow list: if isOwnerAccount();
+
+      allow create: if isAdmin() &&
+                       isValidId(configId) &&
+                       incoming().updatedBy == request.auth.uid &&
+                       incoming().keys().hasAll(['updatedBy', 'maintenanceMode', 'dailyScanLimit', 'currentAppVersion', 'releaseNotes', 'schemaVersion', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['updatedBy', 'maintenanceMode', 'maintenanceMessage', 'dailyScanLimit', 'featuredPlantSlug', 'featuredPlantTitle', 'featuredPlantFact', 'currentAppVersion', 'releaseNotes', 'schemaVersion', 'createdAt', 'updatedAt']) &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       isValidTimestamp(incoming().updatedAt) &&
+                       isValidAppConfig(incoming());
+
+      allow update: if isAdmin() &&
+                       isValidId(configId) &&
+                       incoming().updatedBy == request.auth.uid &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidTimestamp(incoming().updatedAt) &&
+                       isValidAppConfig(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['updatedBy', 'maintenanceMode', 'maintenanceMessage', 'dailyScanLimit', 'featuredPlantSlug', 'featuredPlantTitle', 'featuredPlantFact', 'currentAppVersion', 'releaseNotes', 'schemaVersion', 'updatedAt']);
+
+      allow delete: if false;
+    }
+
+    // Owner Announcements & Changelog
+    match /announcements/{announcementId} {
+      allow get: if isValidId(announcementId) && (isAdmin() || (resource != null && existing().published == true));
+      allow list: if isOwnerAccount() || (resource != null && existing().published == true);
+
+      allow create: if isAdmin() &&
+                       isValidId(announcementId) &&
+                       incoming().authorId == request.auth.uid &&
+                       incoming().keys().hasAll(['authorId', 'title', 'body', 'type', 'published', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['authorId', 'title', 'body', 'type', 'versionTag', 'published', 'createdAt', 'updatedAt']) &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       isValidTimestamp(incoming().updatedAt) &&
+                       isValidAnnouncement(incoming());
+
+      allow update: if isAdmin() &&
+                       isValidId(announcementId) &&
+                       incoming().authorId == existing().authorId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidTimestamp(incoming().updatedAt) &&
+                       isValidAnnouncement(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['title', 'body', 'type', 'versionTag', 'published', 'updatedAt']);
+
+      allow delete: if isAdmin() && isValidId(announcementId);
+    }
+
+    // User Feedback & Error Reports
+    match /feedback_reports/{reportId} {
+      allow get: if isValidId(reportId) && (isAdmin() || (isSignedIn() && resource != null && existing().userId == request.auth.uid));
+      allow list: if isOwnerAccount() || (isSignedIn() && resource != null && existing().userId == request.auth.uid);
+
+      allow create: if isSignedIn() &&
+                       isValidId(reportId) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().status == 'open' &&
+                       !('adminNotes' in incoming()) &&
+                       incoming().keys().hasAll(['userId', 'category', 'message', 'status', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'userEmail', 'plantName', 'category', 'message', 'status', 'createdAt', 'updatedAt']) &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       isValidTimestamp(incoming().updatedAt) &&
+                       isValidFeedbackReport(incoming());
+
+      allow update: if isAdmin() &&
+                       isValidId(reportId) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidTimestamp(incoming().updatedAt) &&
+                       isValidFeedbackReport(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['status', 'adminNotes', 'updatedAt']);
+
+      allow delete: if isAdmin() && isValidId(reportId);
+    }
+
+    // Append-only AI Usage & Error Telemetry
+    match /usage_logs/{logId} {
+      allow get: if isValidId(logId) && isAdmin();
+      allow list: if isOwnerAccount();
+
+      allow create: if isSignedIn() &&
+                       isValidId(logId) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll(['userId', 'action', 'modelName', 'status', 'latencyMs', 'createdAt']) &&
+                       incoming().keys().hasOnly(['userId', 'action', 'modelName', 'status', 'errorSummary', 'latencyMs', 'createdAt']) &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       isValidUsageLog(incoming());
+
+      allow update, delete: if false;
+    }
+
+    // Server-Controlled Freemium Entitlement Records
+    match /entitlements/{userId} {
+      allow get: if isValidId(userId) && ((isSignedIn() && request.auth.uid == userId) || isAdmin());
+      allow list: if isOwnerAccount();
+
+      // Client may only bootstrap an initial FREE entitlement (0 of 10 used); never a paid plan.
+      allow create: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll(['userId', 'planType', 'freeIdentificationsUsed', 'freeIdentificationsLimit', 'subscriptionStatus', 'purchaseProvider', 'purchaseReference', 'willAutoRenew', 'hasLifetimeEntitlement', 'schemaVersion', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'planType', 'freeIdentificationsUsed', 'freeIdentificationsLimit', 'subscriptionStatus', 'expiresAt', 'purchaseProvider', 'purchaseReference', 'productId', 'willAutoRenew', 'hasLifetimeEntitlement', 'lastScanRequestId', 'schemaVersion', 'createdAt', 'updatedAt']) &&
+                       incoming().planType == 'FREE' &&
+                       incoming().freeIdentificationsUsed == 0 &&
+                       incoming().freeIdentificationsLimit == 10 &&
+                       incoming().subscriptionStatus == 'FREE' &&
+                       (!('expiresAt' in incoming()) || incoming().expiresAt == null) &&
+                       incoming().purchaseProvider == 'NONE' &&
+                       incoming().purchaseReference == '' &&
+                       incoming().willAutoRenew == false &&
+                       incoming().hasLifetimeEntitlement == false &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       isValidTimestamp(incoming().updatedAt) &&
+                       isValidUserEntitlement(incoming());
+
+      // Client may only increment freeIdentificationsUsed by +1 (up to 10) on FREE plan with unique request ID.
+      // Clients can NEVER modify planType, subscriptionStatus, expiresAt, purchaseProvider, purchaseReference, or limits.
+      allow update: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       existing().planType == 'FREE' &&
+                       existing().hasLifetimeEntitlement == false &&
+                       incoming().freeIdentificationsUsed == existing().freeIdentificationsUsed + 1 &&
+                       incoming().freeIdentificationsUsed <= existing().freeIdentificationsLimit &&
+                       incoming().lastScanRequestId is string &&
+                       incoming().lastScanRequestId.size() >= 8 &&
+                       incoming().lastScanRequestId != existing().get('lastScanRequestId', '') &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['freeIdentificationsUsed', 'lastScanRequestId', 'updatedAt']) &&
+                       isValidTimestamp(incoming().updatedAt) &&
+                       isValidUserEntitlement(incoming());
+
+      allow delete: if false;
+    }
+
+    // Server-Only Purchase Ledger & Webhook Deduplication (Admin SDK only)
+    match /purchase_ledger/{purchaseKey} {
+      allow read, write: if false;
+    }
+
+    match /webhook_events/{eventId} {
+      allow read, write: if false;
+    }
+  }
+}
